@@ -196,3 +196,5 @@ cython_debug/
 keys/*.pem
 
 uploaded_files/*.docx
+
+medical-chatbot-dev/*
