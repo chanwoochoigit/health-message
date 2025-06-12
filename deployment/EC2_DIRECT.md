@@ -39,13 +39,19 @@ export HOST_BACKEND_PORT=9001
 sudo DATABASE_URL="$DATABASE_URL" bash ec2-deploy.sh production {your-docker-registry}
 
 # if this still doesn't work try:
+sudo -u postgres psql -d health_message_db -c "
+GRANT ALL PRIVILEGES ON DATABASE health_message_db TO hmsg_user;
+GRANT ALL ON SCHEMA public TO hmsg_user;
+GRANT CREATE ON SCHEMA public TO hmsg_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hmsg_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hmsg_user;
+"
 sudo docker run -d \
     --name hmsg-production \
-    --restart unless-stopped \
     -p 9000:3000 \
     -p 9001:8000 \
-    -e DATABASE_URL="$DATABASE_URL" \
-    -e ENVIRONMENT="production" \
+    --add-host=host.docker.internal:host-gateway \
+    -e DATABASE_URL="postgresql://hmsg_user:{your-db-password}@host.docker.internal:5432/health_message_db" \
     {your-docker-registry}/health-message-app:latest
 ```
 
