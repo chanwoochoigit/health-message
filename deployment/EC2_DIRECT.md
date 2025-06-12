@@ -21,6 +21,7 @@ scp -i keys/your-key.pem deployment/ec2-*.sh ubuntu@your-ec2-ip:~/
 ### 3. Set up the database
 
 ```bash
+# while in EC2 instance
 ./ec2-setup-db.sh your-secure-password
 ```
 
@@ -30,76 +31,21 @@ scp -i keys/your-key.pem deployment/ec2-*.sh ubuntu@your-ec2-ip:~/
 export DATABASE_URL=postgresql://hmsg_user:your-secure-password@localhost:5432/health_message_db
 ```
 
-### 5. Deploy the application
-
+### 5. Deploy the application (porting to 9000 is required)
+Note: The application will be available on port 9000 (changed from port 80 to avoid conflicts)
 ```bash
-sudo DATABASE_URL="$DATABASE_URL" bash ec2-deploy.sh production your-docker-registry
+export HOST_FRONTEND_PORT=9000
+export HOST_BACKEND_PORT=9001
+sudo DATABASE_URL="$DATABASE_URL" bash ec2-deploy.sh production {your-docker-registry}
+
+# if this still doesn't work try:
+sudo docker run -d \
+    --name hmsg-production \
+    --restart unless-stopped \
+    -p 9000:3000 \
+    -p 9001:8000 \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e ENVIRONMENT="production" \
+    {your-docker-registry}/health-message-app:latest
 ```
 
-That's it! Your app will be running at `http://your-ec2-ip`
-
-## 🛠️ Commands
-
-### Database Setup:
-```bash
-./ec2-setup-db.sh your-password    # Set up PostgreSQL
-```
-
-### Application Deployment:
-```bash
-./ec2-deploy.sh production myregistry    # Deploy production
-./ec2-deploy.sh staging myregistry       # Deploy staging environment
-```
-
-### Management:
-```bash
-# View logs
-sudo docker logs hmsg-production -f
-
-# Restart application
-sudo docker restart hmsg-production
-
-# Check status
-sudo docker ps
-
-# Stop application
-sudo docker stop hmsg-production
-```
-
-## 🔧 Environment Variables
-
-Set these before deploying:
-
-```bash
-export DATABASE_URL=postgresql://user:pass@host:5432/db
-```
-
-## 📊 Access Your App
-
-- **Production**: `http://your-ec2-ip` (port 80)
-- **Staging**: `http://your-ec2-ip:3000`
-
-## 🚨 Troubleshooting
-
-### Check application logs:
-```bash
-sudo docker logs hmsg-production
-```
-
-### Check database:
-```bash
-sudo systemctl status postgresql
-PGPASSWORD=yourpass psql -h localhost -U hmsg_user -d health_message_db
-```
-
-### Check Docker:
-```bash
-sudo docker ps
-sudo docker images
-```
-
-### Restart everything:
-```bash
-sudo systemctl restart postgresql
-sudo docker restart hmsg-production
-```
