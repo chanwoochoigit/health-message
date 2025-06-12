@@ -1,0 +1,80 @@
+cat > .dockerignore << 'EOF'
+# Security
+.env
+keys/
+*.pem
+*.key
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+README*
+
+# Development files
+.env*
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reflex build artifacts
+.web/
+
+# Docker
+Dockerfile*
+docker-compose*
+
+# Deployment
+deployment/
+keys/
+
+# Uploads and temp files
+uploaded_files/
+*.tmp
+*.temp
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.pdf
+*.zip
+*.tar.gz
+EOF

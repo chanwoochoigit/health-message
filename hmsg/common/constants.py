@@ -1,0 +1,23 @@
+class Constants:
+    SAMPLE_PATIENT_NAMES = [
+        "Olivia Brown",
+        "Patrick White",
+        "Quinn Black",
+        "Ryan Gray",
+        "Sophia Blue",
+        "Thomas Red",
+        "Uma Yellow",
+        "Victor Purple",
+        "William Orange",
+        "Xavier Pink",
+        "Yara Green",
+        "Zane Brown",
+        "James Black",
+        "Emma Green",
+        "Liam Brown",
+        "Sophia Blue",
+        "Noah Red",
+        "Olivia Yellow",
+        "Lucas Purple",
+        "Mia Orange",
+    ]
