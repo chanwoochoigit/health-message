@@ -2,7 +2,7 @@
 
 import reflex as rx
 from ..services.auth_service import authenticate_user, create_user
-from ..services.database import SessionLocal, ProfileType, User
+from ..services.database import ProfileType, User, get_session
 
 
 class AuthState(rx.State):
@@ -56,7 +56,7 @@ class AuthState(rx.State):
             self.error_message = "Password must be at least 6 characters"
             return
             
-        db = SessionLocal()
+        db = get_session()
         try:
             user = authenticate_user(db, self.username.strip(), self.password)
             if user:
@@ -84,7 +84,7 @@ class AuthState(rx.State):
             self.error_message = "Please enter both username and password"
             return
             
-        db = SessionLocal()
+        db = get_session()
         try:
             # Check if user already exists
             existing_user = db.query(User).filter(User.username == self.username).first()

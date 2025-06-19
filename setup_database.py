@@ -9,7 +9,7 @@ import os
 import sys
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-from hmsg.services.database import create_tables, SessionLocal
+from hmsg.services.database import create_tables, get_session, init_database
 from hmsg.services.patient_service import create_sample_patients
 
 
@@ -83,6 +83,7 @@ def main():
         print("\n📦 Setting up database...")
         
         # Ensure DATABASE_URL is available for database operations
+        init_database()  # Initialize database at runtime
         from hmsg.services.database import engine
         print(f"🔗 Database engine initialized: {str(engine.url).split('@')[0]}@...")
         
@@ -104,7 +105,7 @@ def main():
         if response in ['y', 'yes']:
             # Create sample patients (safe - no login credentials)
             print("\n📊 Creating sample patients...")
-            db = SessionLocal()
+            db = get_session()
             try:
                 create_sample_patients(db)
                 print("✅ Sample patients created successfully!")

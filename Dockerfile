@@ -27,5 +27,8 @@ ENV PYTHONPATH=/app
 # Expose ports
 EXPOSE 3000 8000
 
+# Clean any cached Reflex state that might contain hardcoded defaults
+RUN rm -rf .web/ || true
+
 # Start command
 CMD ["reflex", "run", "--env", "prod", "--backend-host", "0.0.0.0"]

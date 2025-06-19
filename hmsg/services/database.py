@@ -8,29 +8,46 @@ import enum
 import os
 from datetime import datetime
 
-# Database configuration with PostgreSQL default
-# Use system username for macOS Homebrew PostgreSQL installations
-import getpass
-default_user = getpass.getuser()
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    f"postgresql://{default_user}@localhost:5432/health_message_db"  # PostgreSQL default
-)
+# Database configuration function - reads at runtime
+def get_database_url():
+    """Get DATABASE_URL from environment at runtime."""
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+    
+    # Fallback to default
+    import getpass
+    default_user = getpass.getuser()
+    return f"postgresql://{default_user}@localhost:5432/health_message_db"
 
-try:
-    # Create engine and session
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base = declarative_base()
+# Global variables - will be initialized by init_database()
+engine = None
+SessionLocal = None
+Base = declarative_base()
+
+def init_database():
+    """Initialize database connection at runtime."""
+    global engine, SessionLocal
     
-    # Test connection
-    with engine.connect() as conn:
-        pass
-    print(f"✅ Database connected: {DATABASE_URL.split('://')[0]}")
+    if engine is not None:
+        return  # Already initialized
     
-except Exception as e:
-    print(f"❌ PostgreSQL connection failed: {e}")
-    print("Please ensure PostgreSQL is running and database exists.")
+    DATABASE_URL = get_database_url()
+    
+    try:
+        # Create engine and session
+        engine = create_engine(DATABASE_URL)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        
+        # Test connection
+        with engine.connect() as conn:
+            pass
+        print(f"✅ Database connected: {DATABASE_URL.split('://')[0]}")
+        
+    except Exception as e:
+        print(f"❌ PostgreSQL connection failed: {e}")
+        print("Please ensure PostgreSQL is running and database exists.")
+        raise
 
 
 class ProfileType(enum.Enum):
@@ -97,17 +114,19 @@ class PatientRecords(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-def get_db():
-    """Get database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_session():
+    """Get a database session, ensuring database is initialized."""
+    init_database()
+    if SessionLocal is None:
+        raise RuntimeError("Database not properly initialized")
+    return SessionLocal()
 
 
 def create_tables():
     """Create all tables."""
+    # Ensure database is initialized
+    init_database()
+    
     try:
         Base.metadata.create_all(bind=engine)
         return True

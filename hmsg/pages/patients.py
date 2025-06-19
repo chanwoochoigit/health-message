@@ -9,7 +9,7 @@ from ..services.patient_service import (
     handle_file_upload,
     create_new_patient
 )
-from ..services.database import SessionLocal
+from ..services.database import get_session
 from ..pages.auth import AuthState
 
 
@@ -58,7 +58,7 @@ class PatientsState(rx.State):
             self.end_date = today.strftime("%Y-%m-%d")
             self.start_date = (today - timedelta(days=365*2)).strftime("%Y-%m-%d")
         
-        db = SessionLocal()
+        db = get_session()
         try:
             self.patients = get_all_patients(db)
         finally:
@@ -76,7 +76,7 @@ class PatientsState(rx.State):
     
     def load_patient_details(self, username: str):
         """Load detailed patient information - delegate to service."""
-        db = SessionLocal()
+        db = get_session()
         try:
             self.patient_details = get_patient_details(db, username) or {}
             # Get all records first, then filter by date

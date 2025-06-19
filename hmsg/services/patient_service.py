@@ -5,7 +5,7 @@ import re
 from datetime import datetime, date
 from typing import List, Dict, Optional
 
-from .database import Patient, PatientRecords, SessionLocal
+from .database import Patient, PatientRecords, get_session
 from ..common.constants import Constants
 from sqlalchemy.orm import Session
 
@@ -248,9 +248,6 @@ def _extract_number(value, number_type=float):
     return None
 
 
-
-
-
 def _create_document_record(file_path: pathlib.Path, username: str) -> List[Dict]:
     """Create a record entry for document files (DOCX)."""
     record = {
@@ -374,7 +371,7 @@ async def handle_file_upload(files: List) -> Dict[str, any]:
         parsed_records = parse_record(file_path)
         
         # Save parsed records to database
-        db = SessionLocal()
+        db = get_session()
         saved_count = 0
         participants_processed = set()
         data_records = 0
@@ -417,7 +414,7 @@ async def handle_file_upload(files: List) -> Dict[str, any]:
 
 def create_new_patient(patient_data: Dict) -> bool:
     """Create a new patient in the database."""
-    db = SessionLocal()
+    db = get_session()
     try:
         name = patient_data.get('name')
         if not name:
@@ -652,7 +649,7 @@ def _parse_all_participant_data(full_text: str, file_path: pathlib.Path) -> List
 
 def _ensure_patient_exists(username: str) -> bool:
     """Check if patient exists in database, create if not exists."""
-    db = SessionLocal()
+    db = get_session()
     try:
         print(f"🔍 Checking if patient {username} exists...")
         

@@ -9,6 +9,8 @@ set -e
 DB_PASSWORD=${1:-""}
 DB_NAME="health_message_db"
 DB_USER="hmsg_user"
+CONFIG_DIR="/opt/health-message-app/config"
+CONFIG_FILE="$CONFIG_DIR/db_config"
 
 echo "🗄️  Health Message App - PostgreSQL Setup"
 echo "=========================================="
@@ -22,6 +24,23 @@ if [ -z "$DB_PASSWORD" ]; then
     echo "./ec2-setup-db.sh mySecurePass123"
     exit 1
 fi
+
+# Create config directory and file
+echo "🔒 Creating secure configuration..."
+sudo mkdir -p $CONFIG_DIR
+sudo chown $USER:$USER $CONFIG_DIR
+sudo chmod 700 $CONFIG_DIR
+
+# Create config file with restricted permissions
+cat > $CONFIG_FILE << EOF
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
+EOF
+
+sudo chmod 600 $CONFIG_FILE
+sudo chown $USER:$USER $CONFIG_FILE
 
 echo "Database: $DB_NAME"
 echo "User: $DB_USER"
@@ -58,8 +77,12 @@ sudo -u postgres psql -d $DB_NAME -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public 
 # Configure for network access (for local connections)
 echo "🌐 Configuring network access..."
 sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/*/main/postgresql.conf
+
+# Allow connections from Docker network
 echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
 echo "host all all ::1/128 md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
+echo "host all all 172.17.0.0/16 md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
+echo "host all all 172.18.0.0/16 md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
 
 # Restart PostgreSQL to apply changes
 echo "🔄 Restarting PostgreSQL..."
@@ -99,16 +122,15 @@ echo "  Host: localhost"
 echo "  Port: 5432"
 echo "  Database: $DB_NAME"
 echo "  Username: $DB_USER"
-echo "  Password: $DB_PASSWORD"
+echo "  Password: [hidden]"
 echo ""
-echo "🔗 DATABASE_URL for your application:"
-echo "export DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME"
+echo "🔗 DATABASE_URL has been saved to: $CONFIG_FILE"
 echo ""
 echo "📝 Next steps:"
-echo "1. Set the DATABASE_URL environment variable (see above)"
+echo "1. The DATABASE_URL is automatically configured in $CONFIG_FILE"
 echo "2. Run the deployment script: ./ec2-deploy.sh"
 echo ""
 echo "💡 Useful PostgreSQL commands:"
-echo "  Connect to DB: PGPASSWORD=$DB_PASSWORD psql -h localhost -U $DB_USER -d $DB_NAME"
+echo "  Connect to DB: PGPASSWORD=\$(grep DB_PASSWORD $CONFIG_FILE | cut -d'=' -f2) psql -h localhost -U $DB_USER -d $DB_NAME"
 echo "  Check status:  sudo systemctl status postgresql"
 echo "  View logs:     sudo journalctl -u postgresql -f" 

@@ -2,7 +2,7 @@
 
 import reflex as rx
 from ..services.auth_service import create_user
-from ..services.database import SessionLocal, ProfileType, User
+from ..services.database import ProfileType, User, get_session
 
 
 class RegisterState(rx.State):
@@ -85,7 +85,7 @@ class RegisterState(rx.State):
         self.is_loading = True
         self.error_message = ""
         
-        db = SessionLocal()
+        db = get_session()
         try:
             # Check if user already exists
             existing_user = db.query(User).filter(User.username == self.username).first()

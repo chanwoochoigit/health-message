@@ -7,7 +7,7 @@ from ..services.patient_service import (
     get_patient_heart_rate_data, 
     get_age_distribution
 )
-from ..services.database import SessionLocal
+from ..services.database import get_session
 from ..services.chart_service import ChartService
 from ..components.layouts import page_layout, page_header, stats_grid, charts_grid
 from ..components.cards import stat_card
@@ -33,7 +33,7 @@ class DashboardState(rx.State):
     
     def load_dashboard_data(self):
         """Load dashboard data from database and generate charts."""
-        db = SessionLocal()
+        db = get_session()
         try:
             # Load statistics
             stats = get_patient_statistics(db)

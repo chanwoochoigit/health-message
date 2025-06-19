@@ -12,6 +12,7 @@ APP_NAME="health-message-app"
 CONTAINER_NAME="hmsg-$ENVIRONMENT"
 FRONTEND_PORT="3000"
 BACKEND_PORT="8000"
+CONFIG_FILE="/opt/health-message-app/config/db_config"
 
 # Set ports based on environment
 if [ "$ENVIRONMENT" = "production" ]; then
@@ -39,28 +40,25 @@ if [ -z "$DOCKER_REGISTRY" ]; then
     exit 1
 fi
 
-# Check if DATABASE_URL is set
-if [ -z "$DATABASE_URL" ]; then
-    echo "❌ DATABASE_URL environment variable not set!"
+# Check if config file exists and source it
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "❌ Database configuration not found!"
     echo ""
-    echo "Please set it first:"
-    echo "export DATABASE_URL=postgresql://user:password@host:5432/database"
-    echo ""
-    echo "Examples:"
-    echo "# For local PostgreSQL:"
-    echo "export DATABASE_URL=postgresql://hmsg_user:password@localhost:5432/health_message_db"
-    echo ""
-    echo "# For RDS:"
-    echo "export DATABASE_URL=postgresql://user:password@your-rds-endpoint:5432/health_message_db"
-    echo ""
-    echo "💡 If running with sudo, use one of these approaches:"
-    echo "sudo DATABASE_URL=\"\$DATABASE_URL\" bash ec2-deploy.sh production myusername"
-    echo "sudo -E bash ec2-deploy.sh production myusername"
-    echo ""
+    echo "Please run the database setup script first:"
+    echo "./ec2-setup-db.sh your-secure-password"
     exit 1
 fi
 
-echo "✅ DATABASE_URL is set"
+# Source the config file
+source "$CONFIG_FILE"
+
+if [ -z "$DATABASE_URL" ]; then
+    echo "❌ DATABASE_URL not found in config file!"
+    echo "Please ensure the database setup script completed successfully."
+    exit 1
+fi
+
+echo "✅ Database configuration loaded from $CONFIG_FILE"
 
 # Install Docker if needed
 if ! command -v docker &> /dev/null; then
@@ -106,12 +104,11 @@ mkdir -p logs
 echo "🚀 Starting container..."
 $DOCKER_CMD run -d \
     --name $CONTAINER_NAME \
-    --restart unless-stopped \
-    -p $HOST_FRONTEND_PORT:$FRONTEND_PORT \
-    -p $HOST_BACKEND_PORT:$BACKEND_PORT \
-    -e DATABASE_URL="$DATABASE_URL" \
+    --network host \
+    -e DATABASE_URL="$(grep DATABASE_URL $CONFIG_FILE | cut -d'=' -f2-)" \
     -e ENVIRONMENT="$ENVIRONMENT" \
     -v /opt/health-message-app/logs:/app/logs \
+    -v $CONFIG_FILE:/app/config/db_config:ro \
     $DOCKER_REGISTRY/$APP_NAME:latest
 
 # Wait and check
