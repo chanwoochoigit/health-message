@@ -2,6 +2,7 @@ import random
 import pathlib
 import os
 import re
+import json
 from datetime import datetime, date
 from typing import List, Dict, Optional
 
@@ -212,8 +213,10 @@ def parse_record(file_path: pathlib.Path, username: str = None) -> List[Dict]:
         
         if file_extension in ['.docx']:
             records = _parse_docx_file(file_path)
+        elif file_extension in ['.txt']:
+            records = _parse_workout_txt_file(file_path)
         else:
-            print(f"❌ Unsupported file type: {file_extension}. Only DOCX files are supported.")
+            print(f"❌ Unsupported file type: {file_extension}. Only DOCX and TXT files are supported.")
         
         print(f"🔍 PARSE RESULTS for {file_path.name}:")
         print(f"   📊 Records found: {len(records)}")
@@ -327,89 +330,115 @@ def get_patient_details(db: Session, username: str) -> Optional[Dict]:
 
 
 async def handle_file_upload(files: List) -> Dict[str, any]:
-    """Handle single file upload, parse it, and save records to database."""
+    """Handle multiple file uploads, parse them, and save records to the database."""
     if not files:
         return {
             "success": False,
             "message": "No files provided",
             "uploaded_files": []
         }
-    
-    # Only process the first file (single file upload)
-    file = files[0]
+
     uploaded_files = []
-    success = True
-    message = ""
-    
-    try:
-        # Read the file data
-        upload_data = await file.read()
-        
-        # Get upload directory
+    total_saved_count = 0
+    all_participants = set()
+    total_data_records = 0
+    total_absence_records = 0
+    errors = []
+
+    for file in files:
+        file_path = None
         try:
-            import reflex as rx
-            upload_dir = rx.get_upload_dir()
-        except Exception as e:
-            print(f"rx.get_upload_dir() failed: {e}")
-            upload_dir = os.path.join(os.getcwd(), "uploaded_files")
-            upload_dir = pathlib.Path(upload_dir)
-        
-        # Ensure the directory exists
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create full file path
-        file_path = upload_dir / file.name
-        
-        # Save the file
-        with file_path.open("wb") as f:
-            f.write(upload_data)
-        
-        uploaded_files.append(file.name)
-        print(f"Successfully saved: {file.name}")
-        
-        # Parse the file and extract records (username will be extracted from DOCX files)
-        parsed_records = parse_record(file_path)
-        
-        # Save parsed records to database
-        db = get_session()
-        saved_count = 0
-        participants_processed = set()
-        data_records = 0
-        absence_records = 0
-        
-        try:
-            for record_data in parsed_records:
-                username = record_data.get("username")
-                if username and add_patient_record(db, username, record_data):
-                    saved_count += 1
-                    participants_processed.add(username)
-                    
-                    # Track record types
-                    if record_data.get("date") is None:
-                        absence_records += 1
-                    else:
-                        data_records += 1
-        finally:
-            db.close()
-        
-        if saved_count > 0:
-            participants_list = ", ".join(participants_processed)
-            success = True
-            message = f"Successfully uploaded and parsed {file.name}. Added {saved_count} record(s) for participants: {participants_list}. ({data_records} data records, {absence_records} absence records)"
-        else:
-            success = False
-            message = f"File {file.name} was uploaded but no records could be parsed."
+            # Get upload directory
+            try:
+                import reflex as rx
+                upload_dir = rx.get_upload_dir()
+            except Exception as e:
+                print(f"rx.get_upload_dir() failed: {e}")
+                upload_dir = os.path.join(os.getcwd(), "uploaded_files")
             
-    except Exception as e:
-        print(f"Error uploading file {file.name}: {e}")
+            upload_dir = pathlib.Path(upload_dir)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            file_path = upload_dir / file.name
+            
+            # Save the file
+            with file_path.open("wb") as f:
+                upload_data = await file.read()
+                f.write(upload_data)
+            
+            uploaded_files.append(file.name)
+            print(f"Successfully saved: {file.name}")
+            
+            # Parse the file and extract records
+            parsed_records = parse_record(file_path)
+            
+            # Save parsed records to the database
+            db = get_session()
+            try:
+                for record_data in parsed_records:
+                    username = record_data.get("username")
+                    last_hr = record_data.pop("last_heart_rate_to_update", None)
+
+                    if username and add_patient_record(db, username, record_data):
+                        total_saved_count += 1
+                        all_participants.add(username)
+                        
+                        # After saving the record, update the patient's last HR
+                        if last_hr is not None:
+                            _update_patient_last_heart_rate(db, username, last_hr)
+
+                        if record_data.get("date") is None:
+                            total_absence_records += 1
+                        else:
+                            total_data_records += 1
+            finally:
+                db.close()
+
+        except Exception as e:
+            error_msg = f"Error processing file {file.name if file else 'N/A'}: {str(e)}"
+            print(error_msg)
+            errors.append(error_msg)
+
+    # Construct the final response message
+    if total_saved_count > 0:
+        participants_list = ", ".join(sorted(list(all_participants)))
+        success = True
+        message = (
+            f"Processed {len(uploaded_files)} file(s). "
+            f"Added/updated {total_saved_count} record(s) for participants: {participants_list}. "
+            f"({total_data_records} data, {total_absence_records} absence records)"
+        )
+    else:
         success = False
-        message = f"Error uploading file: {str(e)}"
-    
+        message = f"Processed {len(uploaded_files)} file(s), but no new records could be saved."
+
+    if errors:
+        success = False
+        message += f" Encountered {len(errors)} error(s): " + "; ".join(errors)
+
     return {
         "success": success,
         "message": message,
         "uploaded_files": uploaded_files
     }
+
+
+def _update_patient_last_heart_rate(db: Session, username: str, heart_rate: float):
+    """Updates the last_heart_rate for a specific patient and commits."""
+    try:
+        patient = db.query(Patient).filter(Patient.username == username).first()
+        if patient:
+            patient.last_heart_rate = heart_rate
+            db.commit()
+            print(f"  ✅ Committed update for last_heart_rate for {username} to {heart_rate}")
+            return True
+        else:
+            print(f"  ⚠️ Could not find patient {username} to update heart rate.")
+            return False
+    except Exception as e:
+        print(f"  ❌ Error updating last_heart_rate for {username}: {e}")
+        db.rollback()
+        return False
 
 
 def create_new_patient(patient_data: Dict) -> bool:
@@ -782,3 +811,110 @@ def add_patient_record(db: Session, username: str, record_data: Dict) -> bool:
         import traceback
         traceback.print_exc()
         return False 
+
+
+def _parse_workout_filename(filename: str):
+    """
+    Parses a workout filename to extract metadata.
+    Format: `[userID]_RDP2P[patientID]_[startDate]_[endDate]_workout.txt`
+    """
+    basename = os.path.basename(filename)
+    match = re.match(r"(\d+)_RDP2P(\d+)_(\d{6})_(\d{6})_workout\.txt", basename)
+    
+    if not match:
+        return None
+    
+    user_id, patient_id_num, start_date_str, end_date_str = match.groups()
+    
+    return {
+        "user_id_from_filename": user_id,
+        "patient_id_from_filename": patient_id_num,
+        "period_start_date": datetime.strptime(start_date_str, "%d%m%y").date(),
+        "period_end_date": datetime.strptime(end_date_str, "%d%m%y").date(),
+    }
+
+def _parse_workout_txt_file(file_path: pathlib.Path) -> List[Dict]:
+    """
+    Parses a .txt workout file which contains multiple data blocks using regex splitting.
+    Each block consists of a header line followed by its JSON data.
+    """
+    records = []
+    try:
+        print(f"📄 Parsing TXT file with block-based regex: {file_path}")
+        full_content = file_path.read_text().strip()
+
+        # Define the regex pattern that marks the beginning of each data block
+        block_start_pattern = re.compile(
+            # Catches: userID;iso_date;duration;steps;distance;calories;mod_int;vig_int;
+            r'(\d+;\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4};\d+;\d+;[0-9\.-]+;[0-9\.-]+;\d+;\d+;)'
+        )
+
+        # Remove the global file header, if it exists, to avoid parsing it
+        file_header = "userID;startDate;duration;steps;distance;calories;moderate intensity;vigorous intensity;heartrate"
+        if full_content.startswith(file_header):
+            full_content = full_content[len(file_header):].strip()
+
+        # Split the content by the block headers. The capturing group in the regex
+        # ensures that the headers themselves are included in the resulting list.
+        # e.g., ['', header1, content1, header2, content2, ...]
+        parts = block_start_pattern.split(full_content)
+        if parts and not parts[0].strip():
+            parts.pop(0)  # Remove the initial empty string if it exists
+
+        # Iterate through the list, taking a header and its content two at a time
+        i = 0
+        while i < len(parts):
+            header_line = parts[i]
+            content_block = parts[i + 1] if (i + 1) < len(parts) else ""
+            
+            try:
+                header_data = header_line.strip().split(';')
+                user_id = header_data[0]
+                start_date = datetime.fromisoformat(header_data[1])
+
+                _ensure_patient_exists(user_id) # Critical step
+
+                # Parse the JSON content to find the last heart rate
+                last_heart_rate = None
+                json_str = content_block.strip()
+                if json_str.startswith('['):
+                    try:
+                        raw_hr_data = json.loads(json_str)
+                        if raw_hr_data:
+                            # Safely get the last heart rate value
+                            last_hr_entry = raw_hr_data[-1]
+                            if 'heartrate' in last_hr_entry:
+                                last_heart_rate = int(last_hr_entry['heartrate'])
+                    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+                        print(f"   - ⚠️ Could not parse heart rate for user {user_id} at {start_date}. Error: {e}")
+
+                notes = (f"Imported from {file_path.name}. "
+                         f"Steps: {header_data[3]}, Distance: {header_data[4]}km, "
+                         f"Calories: {header_data[5]}kcal.")
+
+                record = {
+                    "username": user_id,
+                    "date": start_date.date(),
+                    "week_number": start_date.isocalendar()[1],
+                    "week_description": f"Week {start_date.isocalendar()[1]}",
+                    "hr_fat_burn": None,
+                    "hr_mvpa": float(header_data[6]),
+                    "hr_intense": float(header_data[7]),
+                    "total_mins_per_session": float(header_data[2]) / 60.0,
+                    "total_weekly": None,
+                    "boost": None,
+                    "notes": notes,
+                    "report_file_path": str(file_path),
+                    "last_heart_rate_to_update": last_heart_rate,
+                }
+                records.append(record)
+
+            except Exception as block_error:
+                print(f"   - ⚠️ Skipping malformed block starting with '{header_line[:50]}...'. Error: {block_error}")
+            
+            i += 2
+
+    except Exception as e:
+        print(f"💥 FATAL Error parsing TXT file {file_path}: {e}")
+
+    return records 

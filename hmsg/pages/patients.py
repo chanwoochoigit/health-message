@@ -366,14 +366,15 @@ def add_patient_form() -> rx.Component:
                     rx.text("Upload Files", size="3", weight="medium"),
                     rx.upload(
                         rx.vstack(
-                            rx.text("Drag and drop DOCX files here, or click to select files"),
-                            rx.text("(DOCX only)", size="2", color="#6B7280"),
+                            rx.text("Drag and drop files here, or click to select"),
+                            rx.text("(DOCX, TXT)", size="2", color="#6B7280"),
                             spacing="1",
                         ),
                         accept={
                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+                            "text/plain": [".txt"],
                         },
-                        multiple=False,  # Single file only
+                        multiple=True,
                         border="2px dashed #D1D5DB",
                         padding="4",
                         border_radius="8px",
@@ -497,16 +498,17 @@ def general_upload_form() -> rx.Component:
                 rx.upload(
                     rx.vstack(
                         rx.icon("cloud_upload", size=48, color="#6B7280"),
-                        rx.heading("Drop your DOCX file here", size="5", color="#374151"),
+                        rx.heading("Drop your files here", size="5", color="#374151"),
                         rx.text("or click to browse", size="3", color="#6B7280"),
-                        rx.text("Supports: DOCX only", size="2", color="#9CA3AF"),
+                        rx.text("Supports: DOCX & TXT", size="2", color="#9CA3AF"),
                         spacing="3",
                         align="center",
                     ),
                     accept={
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+                        "text/plain": [".txt"],
                     },
-                    multiple=False,  # Single file only
+                    multiple=True,
                     border="3px dashed #D1D5DB",
                     border_radius="16px",
                     id="general_upload",
@@ -532,7 +534,7 @@ def general_upload_form() -> rx.Component:
                 
                 # Upload button
                 rx.button(
-                    "Upload & Parse File",
+                    "Upload & Parse Files",
                     on_click=PatientsState.handle_upload(
                         rx.upload_files(upload_id="general_upload")
                     ),
