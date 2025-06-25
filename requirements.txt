@@ -4,3 +4,7 @@ SQLAlchemy==2.0.23
 bcrypt==4.0.1
 plotly==5.17.0
 docx2txt==0.8
+python-dotenv
+pandas
+openpyxl
+uvicorn==0.23.2

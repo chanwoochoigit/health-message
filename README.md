@@ -42,208 +42,130 @@ hmsg/
 └── hmsg.py            # Main application entry point
 ```
 
-## 🚀 Quick Start
+## 🚀 Local Development
 
-### 1. Install Dependencies
+This project uses Docker Compose for a consistent and easy-to-manage local development environment.
 
+### 1. Prerequisites
+- Docker and Docker Compose installed.
+
+### 2. Create Environment File
+Create a `.env` file in the project root. This file is for local development only and is ignored by Git.
 ```bash
-pip install -r requirements.txt
+# The username for the local Postgres database.
+POSTGRES_USER=myuser
+
+# The password for the local Postgres database.
+POSTGRES_PASSWORD=mypassword
+
+# The name of the local Postgres database.
+POSTGRES_DB=health_message_db
+
+# The local port to access the database (optional, defaults to 5432).
+DB_PORT=5432
+
+# The local port to access the application's frontend.
+APP_PORT=3000
 ```
 
-### 2. Database Setup
-
-The setup script will automatically:
-- Create PostgreSQL database if available
-- Fall back to SQLite if PostgreSQL isn't available
-- Create all necessary tables
-- Optionally create sample patient data for testing (no user credentials)
-
+### 3. Build and Run
+With the `.env` file in place, run Docker Compose:
 ```bash
-python setup_database.py
+docker-compose up --build -d
+```
+- The `db` service will start a PostgreSQL container.
+- The `db-init` service will run once to create the database tables and seed them with sample patients, then exit.
+- The `app` service will build the application image and start the web server.
+
+Your application is now running at **http://localhost:3000**.
+
+To stop the services, run `docker-compose down`. To remove the database volume and start fresh, use `docker-compose down -v`.
+
+
+## ☁️ Production Deployment (EC2)
+
+This guide covers deploying the application to a single EC2 instance running Ubuntu.
+
+### 1. One-Time Server Setup
+
+Log in to your EC2 instance and perform these steps once:
+
+**A. Install PostgreSQL:**
+```bash
+sudo apt-get update -y
+sudo apt-get install -y postgresql postgresql-contrib docker.io
 ```
 
-### 3. Run Application
-
+**B. Start and Enable Services:**
 ```bash
-reflex run
-```
-
-Open your browser to `http://localhost:3000`
-
-## 🔧 Manual PostgreSQL Setup (Optional)
-
-If you prefer to set up PostgreSQL manually:
-
-### Install PostgreSQL
-
-**macOS:**
-```bash
-brew install postgresql
-brew services start postgresql
-```
-
-**Ubuntu/Linux:**
-```bash
-sudo apt-get install postgresql postgresql-contrib
 sudo systemctl start postgresql
+sudo systemctl enable postgresql
+sudo systemctl start docker
+sudo systemctl enable docker
 ```
 
-### Database Configuration
+**C. Create Database and User:**
+Choose a secure password and run the following commands, replacing `your_secure_password` with your choice.
+```bash
+DB_NAME="health_message_db"
+DB_USER="hmsg_user"
+DB_PASSWORD="your_secure_password"
 
-The application automatically uses your system username for PostgreSQL connection.
-To use custom credentials, set the environment variable:
+sudo -u postgres createdb "$DB_NAME"
+sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO $DB_USER;"
+```
+
+**D. Configure EC2 Security Group:**
+Ensure your EC2 instance's security group allows inbound traffic on:
+- **Port 22** (SSH) from your IP address.
+- **Port 80** (HTTP) from anywhere (`0.0.0.0/0`).
+
+### 2. Deployment
+
+The deployment process is handled by a single script, `deploy.sh`. This is run from your **local machine**, not the EC2 server.
+
+**A. Set Environment Variables:**
+On your local machine, export the following variables. You can add these to your `~/.bashrc` or `~/.zshrc` for convenience.
 
 ```bash
-export DATABASE_URL="postgresql://your_username:your_password@localhost:5432/health_message_db"
+# Your Docker Hub username or organization.
+export DOCKER_REGISTRY="yourdockerhubusername"
+
+# The public IP address or DNS name of your EC2 instance.
+export EC2_HOST="ec2-xx-xx-xx-xx.compute-1.amazonaws.com"
+
+# The user to log into your EC2 instance with (usually 'ubuntu').
+export EC2_USER="ubuntu"
+
+# The local path to your .pem key for EC2 access.
+export PEM_KEY_PATH="./keys/your-key.pem"
+
+# The full connection string for your PostgreSQL database on the EC2 server.
+# NOTE: The host is 'localhost' because the app container will run on the
+# same machine as the database, using the host network.
+export DATABASE_URL="postgresql://hmsg_user:your_secure_password@localhost:5432/health_message_db"
+
+# The public URL of your application's backend. This must match your EC2_HOST.
+export API_URL="http://ec2-xx-xx-xx-xx.compute-1.amazonaws.com:8000"
 ```
 
-## 👥 User Registration
-
-The application requires user registration for security. No default users are created.
-
-To get started:
-1. Run the application: `reflex run`
-2. Click "Register" to create a new account
-3. Choose your profile type (Doctor or Patient)
-
-## 📊 Dashboard Features
-
-### Statistics Cards
-- **Total Patients** - Real-time count of registered patients
-- **Target Achievement** - Percentage of patients meeting health goals
-- **Chatbot Success** - AI persuasion effectiveness metrics
-
-### Charts & Analytics
-- **Heart Rate Monitoring** - Interactive bar charts showing patient vital signs
-- **Age Distribution** - Demographic breakdown of patient population
-- **Patient Details** - Comprehensive patient information table
-
-## 🗃️ Database Schema
-
-### Users Table
-- `id` - Primary key
-- `name` - Username (unique)
-- `profile` - User type (doc/patient)
-- `password_hash` - bcrypt hashed password
-- `created_at` - Registration timestamp
-
-### Patients Table
-- `id` - Primary key
-- `user_id` - Foreign key to users table
-- `username` - Username (unique)
-- `name` - User's name
-- `age` - Patient age
-- `target_achieved` - Health goal status
-- `last_heart_rate` - Most recent vital signs
-- `created_at` - Record creation timestamp
-
-# local test build and run
-
+**B. Run the Deployment Script:**
+Make sure the script is executable, then run it:
 ```bash
-python setup_database.py
-export DB_USER=$(whoami)
-docker build -t health-message-test .    
-docker run \
-  -e DATABASE_URL="postgresql://${DB_USER}@host.docker.internal:5432/health_message_db" \
-  -p 3000:3000 -p 8000:8000 \
-  health-message-test
+chmod +x deploy.sh
+./deploy.sh
 ```
 
+The script will automatically build the Docker image, push it to your registry, SSH into your server, and start the new container.
 
-# 🚀 Deployment
-
-Clean deployment to EC2 using environment variables only.
-
-## 🔧 Prerequisites
-
-- Docker Hub account
-- EC2 instance running Ubuntu
-- PEM key file for SSH access
-
-## 📋 Quick Start
-
-### 1. Set Environment Variables
-
+### 3. Verifying the Deployment
+The script will output the final URLs. To check the status or view logs directly:
 ```bash
-export DOCKER_REGISTRY=your-dockerhub-username
-export EC2_HOST=your-ec2-ip-or-hostname
-export EC2_USER=ubuntu
-export PEM_KEY_PATH=./keys/your-key.pem
-export DATABASE_URL=postgresql://user:pass@localhost:5432/health_message_db
-export DB_PASSWORD=your-secure-database-password
+# Check container status on EC2
+ssh -i $PEM_KEY_PATH $EC2_USER@$EC2_HOST 'sudo docker ps'
+
+# View live logs from the application
+ssh -i $PEM_KEY_PATH $EC2_USER@$EC2_HOST 'sudo docker logs -f hmsg-production'
 ```
-
-### 2. Initial Setup
-```bash
-chmod +x deploy.sh deployment/*.sh
-```
-
-```bash
-# Create keys directory and copy your PEM key
-./deploy.sh setup
-cp /path/to/your-key.pem keys/
-
-# Set up database on EC2
-./deploy.sh database
-
-# Full deployment (build + deploy)
-./deploy.sh full
-```
-
-## 🛠️ Commands
-
-```bash
-./deploy.sh setup      # Create directories
-./deploy.sh build      # Build and push Docker image
-./deploy.sh deploy     # Deploy to EC2
-./deploy.sh database   # Setup PostgreSQL on EC2
-./deploy.sh full       # Build + Deploy
-./deploy.sh status     # Check deployment status
-./deploy.sh logs       # View application logs
-```
-
-## 🗄️ Database Options
-
-### Local PostgreSQL on EC2
-```bash
-export DB_PASSWORD=your-secure-database-password
-./deploy.sh database
-```
-
-### AWS RDS
-```bash
-./deployment/setup-database.sh rds
-# Follow printed instructions
-```
-
-## 🔍 Verification
-
-Your app will be available at:
-- **Production**: `http://your-ec2-ip` (port 80)
-- **Staging**: `http://your-ec2-ip:3000`
-
-## 🚨 Troubleshooting
-
-```bash
-# Check container status
-./deploy.sh status
-
-# View logs
-./deploy.sh logs
-
-# SSH into EC2
-ssh -i $PEM_KEY_PATH $EC2_USER@$EC2_HOST
-
-# Check containers manually
-docker ps
-docker logs hmsg-production
-```
-
-## 💡 Tips
-
-- Keep your PEM key secure with `chmod 400`
-- Use strong passwords for database
-- Monitor your application with `./deploy.sh status`
-- Set up CloudWatch for production monitoring
-
 ---

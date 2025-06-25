@@ -202,3 +202,6 @@ keys/*.pem
 uploaded_files/*.docx
 
 medical-chatbot-dev/
+
+db_config
+

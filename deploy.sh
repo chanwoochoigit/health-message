@@ -1,96 +1,151 @@
 #!/bin/bash
 
-# Health Message App - Simple Deployment Script
-# Usage: ./deploy.sh [help|setup|build|deploy|full] [environment]
+# ==============================================================================
+# Unified Health Message Deployment Script
+#
+# This single script handles the entire deployment process:
+# 1. Builds the Docker image locally.
+# 2. Pushes the image to a Docker registry.
+# 3. SSHs into the EC2 server and deploys the new container.
+#
+# USAGE:
+#   1. Set the required environment variables (see below).
+#   2. Run ./deploy.sh
+# ==============================================================================
 
 set -e
 
-COMMAND=${1:-"help"}
-ENVIRONMENT=${2:-"production"}
+echo "🚀 Starting Unified Health Message Deployment"
+echo "=========================================="
 
-echo "🚀 Health Message App Deployment"
+# --- Configuration ---
+# Read all configuration from environment variables.
+# Ensure these are set in your shell before running the script.
+REQUIRED_VARS=(
+    "DOCKER_REGISTRY"
+    "EC2_HOST"
+    "EC2_USER"
+    "PEM_KEY_PATH"
+    "DATABASE_URL"
+    "API_URL"
+)
+
+APP_NAME="health-message-app"
+CONTAINER_NAME="hmsg-production"
+IMAGE_TAG="latest"
+FULL_IMAGE_NAME="$DOCKER_REGISTRY/$APP_NAME:$IMAGE_TAG"
+
+# --- Pre-flight Checks ---
+echo "🔎 Checking prerequisites..."
+
+# 1. Check for missing environment variables
+missing_vars=()
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var}" ]; then
+        missing_vars+=("$var")
+    fi
+done
+
+if [ ${#missing_vars[@]} -ne 0 ]; then
+    echo "❌ Error: Missing required environment variables:"
+    printf '   - %s\n' "${missing_vars[@]}"
+    echo ""
+    echo "💡 Please export them in your terminal. Example:"
+    echo "   export DOCKER_REGISTRY=yourdockerhubusername"
+    echo "   export EC2_HOST=ec2-xx-xx-xx-xx.compute-1.amazonaws.com"
+    echo "   export EC2_USER=ubuntu"
+    echo "   export PEM_KEY_PATH=./keys/your-key.pem"
+    echo "   export DATABASE_URL='postgresql://user:pass@localhost:5432/db'"
+    echo "   export API_URL='http://ec2-xx-xx-xx-xx.compute-1.amazonaws.com:8000'"
+    exit 1
+fi
+
+# 2. Check for PEM key file
+if [ ! -f "$PEM_KEY_PATH" ]; then
+    echo "❌ Error: PEM key file not found at: $PEM_KEY_PATH"
+    exit 1
+fi
+chmod 400 "$PEM_KEY_PATH"
+
+echo "✅ Prerequisites met."
 echo ""
 
-case $COMMAND in
-    "setup")
-        echo "🔧 Initial setup..."
-        mkdir -p keys
-        echo "✅ Created keys/ directory"
-        echo ""
-        echo "📝 Next steps:"
-        echo "1. Copy your PEM key to keys/ directory"
-        echo "2. Set environment variables (see examples below)"
-        echo "3. Run: ./deploy.sh build"
-        ;;
 
-    "build")
-        echo "🔨 Building and pushing Docker image..."
-        if [ -z "$DOCKER_REGISTRY" ]; then
-            echo "❌ DOCKER_REGISTRY not set"
-            echo "Example: export DOCKER_REGISTRY=your-username"
-            exit 1
-        fi
-        ./deployment/build-and-push.sh "$ENVIRONMENT"
-        ;;
+# --- Step 1: Build and Push Docker Image ---
+echo "STEP 1: Building and Pushing Docker Image"
+echo "------------------------------------------"
+echo "🔨 Building image: $FULL_IMAGE_NAME"
 
-    "deploy")
-        echo "🚀 Deploying to EC2..."
-        ./deployment/deploy-to-ec2.sh "$ENVIRONMENT"
-        ;;
+# The multi-stage build requires the API_URL at build time
+# to correctly package the static frontend files.
+docker build \
+    --platform linux/amd64 \
+    --build-arg API_URL="$API_URL" \
+    --tag "$FULL_IMAGE_NAME" \
+    .
 
-    "database")
-        echo "🗄️  Setting up database..."
-        ./deployment/setup-database.sh local
-        ;;
+echo "📤 Pushing image to Docker Hub..."
+docker push "$FULL_IMAGE_NAME"
 
-    "full")
-        echo "🎯 Full deployment pipeline..."
-        ./deployment/build-and-push.sh "$ENVIRONMENT"
-        ./deployment/deploy-to-ec2.sh "$ENVIRONMENT"
-        ;;
+echo "✅ Image built and pushed successfully."
+echo ""
 
-    "status")
-        echo "📊 Checking status..."
-        if [ -z "$EC2_HOST" ] || [ -z "$PEM_KEY_PATH" ]; then
-            echo "❌ EC2_HOST and PEM_KEY_PATH must be set"
-            exit 1
-        fi
-        ssh -i "$PEM_KEY_PATH" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "docker ps"
-        ;;
 
-    "logs")
-        echo "📋 Fetching logs..."
-        if [ -z "$EC2_HOST" ] || [ -z "$PEM_KEY_PATH" ]; then
-            echo "❌ EC2_HOST and PEM_KEY_PATH must be set"
-            exit 1
-        fi
-        ssh -i "$PEM_KEY_PATH" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "docker logs hmsg-$ENVIRONMENT -f"
-        ;;
+# --- Step 2: Deploy to EC2 ---
+echo "STEP 2: Deploying to EC2 Server"
+echo "---------------------------------"
+echo "Connecting to $EC2_HOST..."
 
-    "help"|*)
-        echo "Commands:"
-        echo "  setup     - Create directories"
-        echo "  build     - Build and push Docker image"
-        echo "  deploy    - Deploy to EC2"
-        echo "  database  - Setup PostgreSQL on EC2"
-        echo "  full      - Build + Deploy"
-        echo "  status    - Check deployment status"
-        echo "  logs      - View application logs"
-        echo ""
-        echo "Required Environment Variables:"
-        echo "  DOCKER_REGISTRY  - Your Docker Hub username"
-        echo "  EC2_HOST         - EC2 public IP or hostname"
-        echo "  EC2_USER         - EC2 username (usually 'ubuntu')"
-        echo "  PEM_KEY_PATH     - Path to your .pem key file"
-        echo "  DATABASE_URL     - PostgreSQL connection string"
-        echo ""
-        echo "Example Setup:"
-        echo "  export DOCKER_REGISTRY=myusername"
-        echo "  export EC2_HOST=ec2-1-2-3-4.compute.amazonaws.com"
-        echo "  export EC2_USER=ubuntu"
-        echo "  export PEM_KEY_PATH=./keys/my-key.pem"
-        echo "  export DATABASE_URL=postgresql://user:pass@localhost:5432/health_message_db"
-        echo ""
-        echo "  ./deploy.sh full"
-        ;;
-esac 
+# This script block will be executed remotely on the EC2 server.
+REMOTE_SCRIPT="
+#!/bin/bash
+set -e
+
+echo '   [EC2] 📦 Starting remote setup...'
+
+# Define Docker command to handle sudo if needed
+if ! docker ps &>/dev/null; then
+    DOCKER_CMD='sudo docker'
+else
+    DOCKER_CMD='docker'
+fi
+
+echo '   [EC2] 📥 Pulling latest image: $FULL_IMAGE_NAME'
+\$DOCKER_CMD pull $FULL_IMAGE_NAME
+
+echo '   [EC2] 🛑 Stopping and removing existing container...'
+\$DOCKER_CMD stop $CONTAINER_NAME || true
+\$DOCKER_CMD rm $CONTAINER_NAME || true
+
+echo '   [EC2] 🚀 Starting new application container...'
+# The main application container's entrypoint script (run.sh) is now responsible
+# for initializing the database tables before starting the servers.
+# We also expose the frontend and backend ports.
+\$DOCKER_CMD run -d \\
+    --name $CONTAINER_NAME \\
+    --restart unless-stopped \\
+    -p 3000:3000 \\
+    -p 8000:8000 \\
+    -e DATABASE_URL='$DATABASE_URL' \\
+    $FULL_IMAGE_NAME
+
+echo '   [EC2] ✅ Remote deployment script finished.'
+"
+
+# Execute the remote script via SSH
+ssh -i "$PEM_KEY_PATH" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "${REMOTE_SCRIPT}"
+
+echo "✅ Deployment command sent to EC2."
+echo ""
+
+
+# --- Final Summary ---
+echo "🎉 DEPLOYMENT COMPLETE! 🎉"
+echo "=========================="
+echo "Your application should be available shortly at:"
+echo "🌐 Frontend: http://$EC2_HOST:3000"
+echo "⚡ Backend:  http://$EC2_HOST:8000"
+echo ""
+echo "To check status, run: ssh -i $PEM_KEY_PATH $EC2_USER@$EC2_HOST 'sudo docker ps'"
+echo "To view logs, run:  ssh -i $PEM_KEY_PATH $EC2_USER@$EC2_HOST 'sudo docker logs -f $CONTAINER_NAME'"
+echo "" 

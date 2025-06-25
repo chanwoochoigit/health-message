@@ -7,18 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import enum
 import os
 from datetime import datetime
-
-# Database configuration function - reads at runtime
-def get_database_url():
-    """Get DATABASE_URL from environment at runtime."""
-    database_url = os.getenv("DATABASE_URL")
-    if database_url:
-        return database_url
-    
-    # Fallback to default
-    import getpass
-    default_user = getpass.getuser()
-    return f"postgresql://{default_user}@localhost:5432/health_message_db"
+from hmsg.config import settings
 
 # Global variables - will be initialized by init_database()
 engine = None
@@ -32,7 +21,13 @@ def init_database():
     if engine is not None:
         return  # Already initialized
     
-    DATABASE_URL = get_database_url()
+    # Use the DATABASE_URL from our centralized settings
+    DATABASE_URL = settings.DATABASE_URL
+    
+    print("="*60, flush=True)
+    print("!!! DATABASE INITIALIZATION !!!", flush=True)
+    print(f"!!! Attempting to connect with URL from config: {DATABASE_URL!r}", flush=True)
+    print("="*60, flush=True)
     
     try:
         # Create engine and session
@@ -42,11 +37,11 @@ def init_database():
         # Test connection
         with engine.connect() as conn:
             pass
-        print(f"✅ Database connected: {DATABASE_URL.split('://')[0]}")
+        print(f"✅ Database connected successfully!", flush=True)
         
     except Exception as e:
-        print(f"❌ PostgreSQL connection failed: {e}")
-        print("Please ensure PostgreSQL is running and database exists.")
+        print(f"❌ PostgreSQL connection failed: {e}", flush=True)
+        print("Please ensure PostgreSQL is running and database exists.", flush=True)
         raise
 
 
@@ -123,7 +118,6 @@ def get_session():
 
 
 def create_tables():
-    """Create all tables."""
     # Ensure database is initialized
     init_database()
     

@@ -1,80 +1,29 @@
-cat > .dockerignore << 'EOF'
-# Security
-.env
-keys/
-*.pem
-*.key
-
 # Git
 .git
 .gitignore
-.gitattributes
-
-# Documentation
-*.md
-docs/
-README*
-
-# Development files
-.env*
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Logs
-*.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Reflex build artifacts
-.web/
 
 # Docker
-Dockerfile*
-docker-compose*
+Dockerfile
+docker-compose.yml
 
-# Deployment
-deployment/
-keys/
+# Python
+.venv
+venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Uploads and temp files
+# Reflex specific
+.web
+.states
+
+# Local data and config
+.DS_Store
+.env
 uploaded_files/
-*.tmp
-*.temp
+keys/
+logs/
 
-# Large media files
-*.mp4
-*.mov
-*.avi
-*.mkv
-*.pdf
-*.zip
-*.tar.gz
-EOF
+# README
+README.md

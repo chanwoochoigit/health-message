@@ -1,34 +1,22 @@
-# Minimal Health Message Application Dockerfile
+# Single-Stage Dockerfile for Production
+# This builds a larger image but is simpler and more reliable,
+# as it keeps the full project context needed by the reflex build process.
+
 FROM python:3.12-alpine
+
+# Install all necessary OS dependencies for both build and runtime.
+# This includes C build tools and Node.js.
+RUN apk add --no-cache gcc musl-dev linux-headers bash curl nodejs npm
 
 WORKDIR /app
 
-# Install essential packages and build dependencies
-RUN apk add --no-cache \
-    bash \
-    nodejs \
-    npm \
-    gcc \
-    musl-dev \
-    linux-headers \
-    curl \
-    util-linux
-
-# Copy application code
-COPY . .
-
-# Install Python dependencies
+# Install all Python dependencies.
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+# Copy the entire application source code.
+COPY . .
 
-# Expose ports
-EXPOSE 3000 8000
-
-# Clean any cached Reflex state that might contain hardcoded defaults
-RUN rm -rf .web/ || true
-
-# Start command
-CMD ["reflex", "run", "--env", "prod", "--backend-host", "0.0.0.0"]
+# The command to run the application in production mode.
+# This compiles and runs the app on the server when the container starts.
+CMD ["reflex", "run", "--env", "prod"]

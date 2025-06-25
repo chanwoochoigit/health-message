@@ -1,8 +1,53 @@
+version: '3.8'
+
 services:
+  db:
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - health-message-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   app:
-    build: .
+    build:
+      context: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "3000:3000"
       - "8000:8000"
+    networks:
+      - health-message-net
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # This is required by Reflex in production mode so the frontend knows
+      # where to send API requests. For local dev, this is correct.
+      - REFLEX_API_URL=http://localhost:8000
+    command: >
+      bash -c "echo '--- Database is healthy, running migrations... ---' && 
+               python -c 'from hmsg.services.database import create_tables; create_tables()' && 
+               echo '--- Migrations complete, seeding database with sample patients... ---' &&
+               python -c 'from hmsg.services.database import get_session; from hmsg.services.patient_service import create_sample_patients; db = get_session(); create_sample_patients(db); db.close()' &&
+               echo '--- Seeding complete, starting application... ---' && 
+               reflex run --env prod"
+
+volumes:
+  postgres_data:
+
+networks:
+  health-message-net:
+    driver: bridge
